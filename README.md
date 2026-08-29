@@ -9,8 +9,8 @@ whether you are online.
 
 ## Status
 
-Rebuilt from scratch in Flutter, starting 2026-08-29. **Phase 0 (scaffold) in progress** — see the plan in
-the tracker and [CLAUDE.md](CLAUDE.md) for the architecture. An earlier Kotlin/Compose client lives in git
+Rebuilt from scratch in Flutter, starting 2026-08-29. Progress and phase status live in [PLAN.md](PLAN.md)
+and [TASKS.md](TASKS.md); the architecture is in [CLAUDE.md](CLAUDE.md). An earlier Kotlin/Compose client lives in git
 history before the clean-slate commit.
 
 ## Specification
