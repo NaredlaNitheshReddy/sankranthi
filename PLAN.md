@@ -692,3 +692,29 @@ The only JDK on the machine is Android Studio's **Java 25**; Flutter's generated
 requires AGP 9.x, and AGP 9 **fails when the `kotlin-android` plugin is applied** — which the Flutter
 scaffold does apply. Flutter 3.41's Android template is validated against Gradle 8.14 + AGP 8.11.1, so the
 supported fix is installing a JDK 17–24, not fighting the toolchain.
+
+### Finding 5 — taxonomies become SQLite reference data, not enums (P1, 2026-08-29)
+
+**Decided by the user:** expense categories, stock units, stock movement types, count reasons and livestock
+categories move from Dart enums to synced SQLite tables, so the organisation can extend them without a
+release.
+
+**What stays code, and why it must:** `SyncStatus`, `UploadStatus`, `OpType`, `OpStatus` and `AccessStatus`
+are the sync engine's and session gate's own state machines — code branches exhaustively on them, so a row
+added to a `sync_statuses` table would have no code path and would do nothing. `Permission` is the same
+argument inverted: a permission no code checks grants nothing, so surfacing it in an admin screen would be
+worse than not offering it — which is exactly why **roles are data and permissions are not**. `TradeKind`
+stays because the set is closed: a trade is in or out, with no third case to extend to.
+
+**Primary key is a slug, not a UUID** — a deliberate, scoped deviation from §12, which applies to business
+records only. Two reasons: the sheet stays readable (`feed`, not a UUID), and more importantly **concurrent
+creation converges instead of duplicating**. If two admins both add "Insurance" while offline, a UUID key
+yields two categories that mean the same thing and split every report between them; a slug key makes both
+writes the same upsert and they merge. For a closed taxonomy that is the correct outcome, not a collision.
+
+**The cost, paid explicitly:** behaviour moves into columns (`decimals`, `sign`, `requiresDirection`,
+`requiresNote`), so the compiler can no longer prove every case is handled. `domain/reference_rules.dart`
+validates at the boundary instead, and **rejects rather than clamps** — clamping `sign = 7` to `1` would
+invent a direction and silently misreport a stock balance, which is the precise class of quiet wrongness
+integer quantities exist to prevent. Seeded defaults are validated by the same rules they impose on
+downloaded rows.

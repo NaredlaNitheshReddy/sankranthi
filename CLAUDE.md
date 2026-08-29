@@ -162,6 +162,20 @@ library.
   variant — where the redirect is followed as a GET and `doGet`'s reply arrives as a cheerful HTTP 200 with
   your payload gone — is what browsers, `curl -L`, Python `requests` and JS `fetch` do. So don't port a
   recipe from those and assume it maps, and note that adding a Flutter web target would make it live.
+- **Taxonomies are SQLite reference tables; only state machines and closed sets are enums.** Expense
+  categories, stock units, stock movement types, count reasons and livestock categories live in
+  `data/local/tables/reference_tables.dart` so the organisation can extend them without a release. Before
+  adding an enum, ask: *could an admin usefully add a value at runtime?* If yes, it is a table.
+  It stays code when the answer is no: `SyncStatus`/`OpType`/`OpStatus`/`UploadStatus`/`AccessStatus` are
+  state machines the code branches on exhaustively, `TradeKind` is closed, and **`Permission` must be code
+  because a permission nothing checks grants nothing** — which is why roles are data and permissions are not.
+- **Reference tables are keyed by slug, not UUID** — a scoped exception to §12, which still governs every
+  business record. Beyond keeping the sheet readable, it makes concurrent creation *converge*: two admins
+  adding "Insurance" offline produce one category, where UUID keys would produce two that split every report.
+- **Validate reference data at the boundary, and reject rather than clamp.** Behaviour that used to be
+  compiler-checked now lives in columns (`sign`, `decimals`, `requiresNote`), so `ReferenceRules` checks it
+  on the way in. Clamping a `sign` of `7` to `1` would invent a direction and silently misreport a stock
+  balance — the exact quiet wrongness integer quantities exist to prevent.
 - **Never use drift's `textEnum<T>()`.** It persists the Dart identifier (`shedRepair`) while the sheet
   expects `shed_repair` — two representations, silent mismatch, rows that never match a query. Every enum
   declares an explicit `wire` string and goes through `WireEnumConverter<T>`.

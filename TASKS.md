@@ -51,8 +51,9 @@ Legend: `[ ]` open · `[x]` done · `[~]` blocked or partial · **§n** = a REQU
 - [x] `WireEnum` contract: every enum carries an explicit `wire` string and a `fromWire`
 - [x] `WireEnumConverter<T>` — strict or explicit-fallback, no default constructor; plus the canonical
       converter instances so each enum's unknown-value decision is made once and asserted
-- [x] Enums: `SyncStatus`, `TradeKind`, `ExpenseCategory`, `StockTxnType`, `StockUnit`, `CountReason`,
-      `UploadStatus`, `Permission`, `AccessStatus`, `AuditAction`, `OpType`, `OpStatus`
+- [x] Enums (code only): `SyncStatus`, `TradeKind`, `UploadStatus`, `Permission`, `AccessStatus`,
+      `AuditAction`, `OpType`, `OpStatus` — state machines and closed sets only. The taxonomies that used
+      to live here are reference tables now; see Finding 5 in PLAN.md
 - [x] Test: every enum's wire values are unique, lowercase with underscores, and round-trip
 - [x] Test: an unknown wire string is handled deliberately, never silently defaulting to a *valid* state
 
@@ -67,7 +68,9 @@ Legend: `[ ]` open · `[x]` done · `[~]` blocked or partial · **§n** = a REQU
 - [ ] Ledger: `expenses` (§27), `livestock_trades`, `receipts` (§28, with `storageConfigId`, nullable
       `driveFileId`, and no separate `metadataSyncStatus` per constraint #7)
 - [ ] Stock: `stock_items` (no `currentQuantity` — Finding 2), `stock_transactions` (§32)
-- [ ] Livestock: `livestock_categories`, `livestock_count_events` (signed `delta` plus reason, not §33's
+- [x] Reference tables: `expense_categories`, `stock_units`, `stock_txn_types`, `count_reasons`,
+      `livestock_categories` — slug PK, behaviour as columns, seeded defaults, validated by ReferenceRules
+- [ ] Livestock: `livestock_count_events` (signed `delta` plus reason, not §33's
       `previousCount`/`newCount`)
 - [ ] Medicine: `medicine_records` (§34)
 - [ ] Access: `users` (§29), `roles` (§30/§31)

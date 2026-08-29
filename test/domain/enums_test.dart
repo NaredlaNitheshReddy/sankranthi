@@ -4,14 +4,14 @@ import 'package:sankranthi/domain/access_enums.dart';
 import 'package:sankranthi/domain/ledger_enums.dart';
 import 'package:sankranthi/domain/sync_enums.dart';
 
-/// Every wire enum in the app, so the convention checks below cover a new one
-/// automatically rather than only the ones someone remembered to add.
+/// Every wire enum left in the app, so the convention checks below cover a new
+/// one automatically rather than only the ones someone remembered to add.
+///
+/// This list is deliberately short. The taxonomies that used to be here --
+/// expense categories, stock units, movement types, count reasons -- are
+/// user-extensible reference tables now; see reference_defaults_test.dart.
 final Map<String, List<WireEnum>> allWireEnums = <String, List<WireEnum>>{
   'TradeKind': TradeKind.values,
-  'ExpenseCategory': ExpenseCategory.values,
-  'StockTxnType': StockTxnType.values,
-  'StockUnit': StockUnit.values,
-  'CountReason': CountReason.values,
   'SyncStatus': SyncStatus.values,
   'UploadStatus': UploadStatus.values,
   'OpType': OpType.values,
@@ -74,27 +74,31 @@ void main() {
     });
   });
 
-  group('lookup', () {
-    test('an unknown wire string returns null, not a valid-looking value', () {
-      expect(SyncStatus.fromWire('teleported'), isNull);
-      expect(ExpenseCategory.fromWire('shedRepair'), isNull);
-      expect(Permission.fromWire('EXPENSE_VIEW'), isNull);
-    });
-
-    test('a null wire string returns null', () {
-      expect(SyncStatus.fromWire(null), isNull);
-      expect(wireEnumOrNull<SyncStatus>(SyncStatus.values, null), isNull);
-    });
-
-    test('wireEnumOf throws with the enum name and the offending value', () {
+  group('what remains an enum, and why', () {
+    test('only closed sets and state machines are left', () {
+      // The test applied: could an admin usefully add a value at runtime?
+      //
+      //   TradeKind    -- no, a trade is in or out, there is no third case.
+      //   SyncStatus   -- no, the sync engine branches exhaustively on it.
+      //   UploadStatus -- no, same.
+      //   OpType       -- no, each type is a distinct server action.
+      //   OpStatus     -- no, the drain branches on it.
+      //   AccessStatus -- no, the session gate branches on it.
+      //   AuditAction  -- no, though it is stored as lenient raw text.
+      //   Permission   -- no. A permission no code checks grants nothing, so
+      //                  offering it in an admin screen would be worse than
+      //                  not offering it. Roles are data instead.
+      //
+      // Anything answering "yes" belongs in reference_tables.dart.
+      expect(allWireEnums.keys, hasLength(8));
       expect(
-        () => wireEnumOf<SyncStatus>(SyncStatus.values, 'nope'),
-        throwsA(
-          isA<UnknownWireValue>()
-              .having((UnknownWireValue e) => e.wire, 'wire', 'nope')
-              .having((UnknownWireValue e) => e.enumName, 'enumName', 'SyncStatus'),
-        ),
+        allWireEnums.keys,
+        isNot(contains('ExpenseCategory')),
+        reason: 'expense categories are user-extensible reference data now',
       );
+      expect(allWireEnums.keys, isNot(contains('StockUnit')));
+      expect(allWireEnums.keys, isNot(contains('StockTxnType')));
+      expect(allWireEnums.keys, isNot(contains('CountReason')));
     });
   });
 
@@ -102,9 +106,6 @@ void main() {
     // These are the contract with the sheet and with every other device.
     // Changing one is a data migration, so a test has to object.
     test('the snake_case cases, which are the ones that get mangled', () {
-      expect(ExpenseCategory.shedRepair.wire, 'shed_repair');
-      expect(CountReason.transferIn.wire, 'transfer_in');
-      expect(CountReason.transferOut.wire, 'transfer_out');
       expect(OpType.uploadReceipt.wire, 'upload_receipt');
       expect(OpStatus.inFlight.wire, 'in_flight');
       expect(AuditAction.accessChange.wire, 'access_change');
@@ -117,75 +118,9 @@ void main() {
       expect(TradeKind.sell.signedMinor(250000), 250000);
       expect(TradeKind.buy.signedMinor(250000), -250000);
     });
-  });
 
-  group('StockTxnType direction', () {
-    test('purchase adds and consumption subtracts, whatever sign is passed', () {
-      expect(StockTxnType.purchase.signedQuantity(5000), 5000);
-      expect(StockTxnType.consumption.signedQuantity(5000), -5000);
-      expect(StockTxnType.consumption.signedQuantity(-5000), -5000);
-    });
-
-    test('adjustment and transfer keep the caller-supplied sign', () {
-      expect(StockTxnType.adjustment.signedQuantity(-500), -500);
-      expect(StockTxnType.adjustment.signedQuantity(500), 500);
-      expect(StockTxnType.transfer.signedQuantity(-500), -500);
-    });
-
-    test('only the ambiguous types ask the user for a direction', () {
-      expect(StockTxnType.adjustment.needsExplicitDirection, isTrue);
-      expect(StockTxnType.transfer.needsExplicitDirection, isTrue);
-      expect(StockTxnType.purchase.needsExplicitDirection, isFalse);
-      expect(StockTxnType.consumption.needsExplicitDirection, isFalse);
-    });
-  });
-
-  group('CountReason', () {
-    test('signs match the direction the herd moves', () {
-      expect(CountReason.birth.sign, 1);
-      expect(CountReason.purchase.sign, 1);
-      expect(CountReason.transferIn.sign, 1);
-      expect(CountReason.death.sign, -1);
-      expect(CountReason.sale.sign, -1);
-      expect(CountReason.transferOut.sign, -1);
-      expect(CountReason.correction.sign, 0);
-    });
-
-    test('only a correction demands a note', () {
-      // "The count was wrong" does not explain itself, so §44's exact-count
-      // action requires the user to say why.
-      expect(CountReason.correction.requiresNote, isTrue);
-      for (final CountReason reason in CountReason.values) {
-        if (reason != CountReason.correction) {
-          expect(reason.requiresNote, isFalse, reason: reason.wire);
-        }
-      }
-    });
-  });
-
-  group('StockUnit display precision', () {
-    test('countable units show no decimals', () {
-      // There is no such thing as a third of a sack.
-      for (final StockUnit unit in <StockUnit>[
-        StockUnit.piece,
-        StockUnit.bag,
-        StockUnit.bundle,
-        StockUnit.dose,
-      ]) {
-        expect(unit.decimals, 0, reason: unit.wire);
-      }
-    });
-
-    test('weights and volumes show the stored resolution', () {
-      expect(StockUnit.kilogram.decimals, 3);
-      expect(StockUnit.litre.decimals, 3);
-    });
-
-    test('every unit stays within the stored resolution', () {
-      for (final StockUnit unit in StockUnit.values) {
-        expect(unit.decimals, inInclusiveRange(0, 3), reason: unit.wire);
-        expect(unit.symbol, isNotEmpty, reason: unit.wire);
-      }
+    test('the set is closed, which is why it is still an enum', () {
+      expect(TradeKind.values, hasLength(2));
     });
   });
 
@@ -367,6 +302,34 @@ void main() {
       expect(AccessStatus.approved.isApproved, isTrue);
       expect(AccessStatus.pending.isApproved, isFalse);
       expect(AccessStatus.rejected.isApproved, isFalse);
+    });
+  });
+
+  group('lookup', () {
+    test('an unknown wire string returns null, not a valid-looking value', () {
+      expect(SyncStatus.fromWire('teleported'), isNull);
+      expect(Permission.fromWire('EXPENSE_VIEW'), isNull);
+      expect(TradeKind.fromWire('barter'), isNull);
+    });
+
+    test('a null wire string returns null', () {
+      expect(SyncStatus.fromWire(null), isNull);
+      expect(wireEnumOrNull<SyncStatus>(SyncStatus.values, null), isNull);
+    });
+
+    test('wireEnumOf throws with the enum name and the offending value', () {
+      expect(
+        () => wireEnumOf<SyncStatus>(SyncStatus.values, 'nope'),
+        throwsA(
+          isA<UnknownWireValue>()
+              .having((UnknownWireValue e) => e.wire, 'wire', 'nope')
+              .having(
+                (UnknownWireValue e) => e.enumName,
+                'enumName',
+                'SyncStatus',
+              ),
+        ),
+      );
     });
   });
 }

@@ -9,11 +9,9 @@ void main() {
   group('toSql always writes the wire string', () {
     test('never the Dart identifier', () {
       // The bug drift's textEnum would have given us for free.
-      expect(expenseCategoryConverter.toSql(ExpenseCategory.shedRepair),
-          'shed_repair');
-      expect(countReasonConverter.toSql(CountReason.transferIn), 'transfer_in');
       expect(opTypeConverter.toSql(OpType.uploadReceipt), 'upload_receipt');
       expect(opStatusConverter.toSql(OpStatus.inFlight), 'in_flight');
+      expect(tradeKindConverter.toSql(TradeKind.sell), 'sell');
     });
 
     test('round-trips every value of every converter', () {
@@ -33,12 +31,8 @@ void main() {
       check('SyncStatus', syncStatusConverter);
       check('UploadStatus', uploadStatusConverter);
       check('OpStatus', opStatusConverter);
-      check('ExpenseCategory', expenseCategoryConverter);
       check('AccessStatus', accessStatusConverter);
       check('TradeKind', tradeKindConverter);
-      check('StockTxnType', stockTxnTypeConverter);
-      check('StockUnit', stockUnitConverter);
-      check('CountReason', countReasonConverter);
       check('OpType', opTypeConverter);
     });
   });
@@ -60,19 +54,17 @@ void main() {
     });
 
     test('every converter that must not guess, does not', () {
-      // Each of these decides a sign, a unit, or an intent. A wrong guess
-      // corrupts a number or performs the wrong action, so failing loudly is
-      // the only defensible behaviour.
-      expect(() => tradeKindConverter.fromSql('?'),
-          throwsA(isA<UnknownWireValue>()));
-      expect(() => stockTxnTypeConverter.fromSql('?'),
-          throwsA(isA<UnknownWireValue>()));
-      expect(() => stockUnitConverter.fromSql('?'),
-          throwsA(isA<UnknownWireValue>()));
-      expect(() => countReasonConverter.fromSql('?'),
-          throwsA(isA<UnknownWireValue>()));
+      // Each decides a sign or an intent. A wrong guess corrupts a number or
+      // performs the wrong action, so failing loudly is the only defensible
+      // behaviour.
       expect(
-          () => opTypeConverter.fromSql('?'), throwsA(isA<UnknownWireValue>()));
+        () => tradeKindConverter.fromSql('?'),
+        throwsA(isA<UnknownWireValue>()),
+      );
+      expect(
+        () => opTypeConverter.fromSql('?'),
+        throwsA(isA<UnknownWireValue>()),
+      );
     });
   });
 
@@ -105,19 +97,12 @@ void main() {
       expect(opStatusConverter.onUnknown, isNot(OpStatus.failedPermanent));
     });
 
-    test('ExpenseCategory falls back to other', () {
-      // A category is a label and a report bucket; the amount is unaffected, so
-      // keeping the row visible beats taking the list down.
-      expect(
-        expenseCategoryConverter.fromSql('cryptocurrency'),
-        ExpenseCategory.other,
-      );
-    });
-
     test('AccessStatus falls back to pending, which denies access', () {
       // The one fallback that is a security decision: on ambiguity, deny.
-      expect(accessStatusConverter.fromSql('probationary'),
-          AccessStatus.pending);
+      expect(
+        accessStatusConverter.fromSql('probationary'),
+        AccessStatus.pending,
+      );
       expect(
         accessStatusConverter.onUnknown?.isApproved,
         isFalse,
@@ -128,39 +113,30 @@ void main() {
     test('a known value is never replaced by the fallback', () {
       expect(syncStatusConverter.fromSql('synced'), SyncStatus.synced);
       expect(accessStatusConverter.fromSql('approved'), AccessStatus.approved);
-      expect(
-        expenseCategoryConverter.fromSql('shed_repair'),
-        ExpenseCategory.shedRepair,
-      );
     });
   });
 
   group('nullable converters', () {
+    // Kept for the enum columns that are nullable; strictness is inherited from
+    // the wrapped converter so NULL and "unrecognised" stay distinguishable.
+    const NullableWireEnumConverter<TradeKind> nullableTradeKind =
+        NullableWireEnumConverter<TradeKind>(tradeKindConverter);
+
     test('NULL maps to null in both directions', () {
-      expect(nullableStockUnitConverter.fromSql(null), isNull);
-      expect(nullableStockUnitConverter.toSql(null), isNull);
+      expect(nullableTradeKind.fromSql(null), isNull);
+      expect(nullableTradeKind.toSql(null), isNull);
     });
 
     test('a present value delegates to the inner converter', () {
-      expect(
-        nullableStockUnitConverter.fromSql('kilogram'),
-        StockUnit.kilogram,
-      );
-      expect(
-        nullableStockUnitConverter.toSql(StockUnit.kilogram),
-        'kilogram',
-      );
-      expect(
-        nullableCountReasonConverter.fromSql('transfer_out'),
-        CountReason.transferOut,
-      );
+      expect(nullableTradeKind.fromSql('buy'), TradeKind.buy);
+      expect(nullableTradeKind.toSql(TradeKind.buy), 'buy');
     });
 
     test('strictness is inherited, so NULL and unknown stay distinguishable', () {
       // NULL means "not set"; an unrecognised string means "something is
       // wrong". Collapsing the second into the first would hide corruption.
       expect(
-        () => nullableStockUnitConverter.fromSql('furlongs'),
+        () => nullableTradeKind.fromSql('barter'),
         throwsA(isA<UnknownWireValue>()),
       );
     });
@@ -178,9 +154,29 @@ void main() {
     test('fallback converters expose the value they chose', () {
       expect(syncStatusConverter.onUnknown, SyncStatus.pending);
       expect(opStatusConverter.onUnknown, OpStatus.queued);
-      expect(expenseCategoryConverter.onUnknown, ExpenseCategory.other);
       expect(accessStatusConverter.onUnknown, AccessStatus.pending);
       expect(uploadStatusConverter.onUnknown, UploadStatus.pending);
+    });
+  });
+
+  group('no converter exists for reference-table data', () {
+    test('the taxonomies are tables, so their columns hold plain slugs', () {
+      // Expense categories, stock units, movement types, count reasons and
+      // livestock categories are user-extensible reference rows now. Their
+      // columns store a slug that is a foreign key, so there is nothing to
+      // convert -- the slug already *is* the stored form. Behaviour that used
+      // to hang off the enum is validated by ReferenceRules instead.
+      //
+      // This test documents the absence so nobody reintroduces a closed set.
+      const List<String> onlyStateMachineConverters = <String>[
+        'syncStatusConverter',
+        'uploadStatusConverter',
+        'opStatusConverter',
+        'opTypeConverter',
+        'accessStatusConverter',
+        'tradeKindConverter',
+      ];
+      expect(onlyStateMachineConverters, hasLength(6));
     });
   });
 }

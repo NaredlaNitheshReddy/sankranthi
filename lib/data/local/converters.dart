@@ -118,17 +118,6 @@ const WireEnumConverter<OpStatus> opStatusConverter =
       OpStatus.queued,
     );
 
-/// Falls back to [ExpenseCategory.other].
-///
-/// A category is a label and a report bucket; the amount, date and author are
-/// unaffected. Keeping the row readable in the wrong bucket beats throwing and
-/// taking the whole expense list down over one unfamiliar value.
-const WireEnumConverter<ExpenseCategory> expenseCategoryConverter =
-    WireEnumConverter<ExpenseCategory>.fallingBackTo(
-      ExpenseCategory.values,
-      ExpenseCategory.other,
-    );
-
 /// Falls back to [AccessStatus.pending].
 ///
 /// The only fallback here that is a security decision: on an unrecognised
@@ -145,32 +134,10 @@ const WireEnumConverter<AccessStatus> accessStatusConverter =
 const WireEnumConverter<TradeKind> tradeKindConverter =
     WireEnumConverter<TradeKind>.strict(TradeKind.values);
 
-/// Strict: the type decides whether a movement adds to or subtracts from a
-/// balance, so a wrong guess corrupts the stock on hand.
-const WireEnumConverter<StockTxnType> stockTxnTypeConverter =
-    WireEnumConverter<StockTxnType>.strict(StockTxnType.values);
-
-/// Strict: the unit is what makes a quantity mean anything. Showing "12.5 kg"
-/// for a value recorded in litres is worse than showing an error.
-const WireEnumConverter<StockUnit> stockUnitConverter =
-    WireEnumConverter<StockUnit>.strict(StockUnit.values);
-
-/// Strict: the domain is small and closed, and a count event whose reason is
-/// unknown cannot be reported on honestly.
-const WireEnumConverter<CountReason> countReasonConverter =
-    WireEnumConverter<CountReason>.strict(CountReason.values);
-
 /// Strict: an operation whose intent is unknown must never be guessed at --
 /// mistaking it could delete a record or resurrect one.
 const WireEnumConverter<OpType> opTypeConverter =
     WireEnumConverter<OpType>.strict(OpType.values);
-
-/// Nullable variants, for columns where SQL NULL means "not set".
-const NullableWireEnumConverter<StockUnit> nullableStockUnitConverter =
-    NullableWireEnumConverter<StockUnit>(stockUnitConverter);
-
-const NullableWireEnumConverter<CountReason> nullableCountReasonConverter =
-    NullableWireEnumConverter<CountReason>(countReasonConverter);
 
 // Deliberately absent: a converter for AuditAction.
 //
@@ -180,3 +147,13 @@ const NullableWireEnumConverter<CountReason> nullableCountReasonConverter =
 // the mapper parses it leniently, showing the unrecognised value as itself. A
 // strict converter would let one unfamiliar row break the whole audit screen;
 // a fallback would misreport what somebody actually did.
+
+// Also deliberately absent: converters for expense categories, stock units,
+// stock movement types, count reasons and livestock categories.
+//
+// Those are no longer enums -- they are user-extensible reference tables (see
+// tables/reference_tables.dart), so the column holds a slug that is a foreign
+// key rather than a closed set of known values. Nothing to convert: the slug is
+// already the stored form, and the behaviour that used to hang off the enum
+// (a unit's precision, a movement's sign) now hangs off the referenced row and
+// is validated by ReferenceRules instead of guaranteed by the compiler.
