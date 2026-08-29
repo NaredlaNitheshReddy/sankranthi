@@ -1,86 +1,76 @@
 # Sankranthi
 
-Android app for the books of a small livestock partnership: record livestock
-purchases and sales, track the maintenance expenses of running the operation, and
-see the net position. Kotlin, Jetpack Compose, Material 3, Supabase.
+A local-first Android app for keeping the books of a small livestock organisation: expenses and receipts,
+stock, livestock counts, medicine and treatments, with roles and permissions, reports and an audit trail.
 
-Access is invite-only in practice — you sign in with Google, which creates an
-access request, and an admin approves it and decides what you may edit.
+**It works with no internet.** Records are written to a local SQLite database and appear immediately;
+synchronisation to the shared backend happens quietly in the background. You should never have to care
+whether you are online.
 
-## Screens
+## Status
 
-| | |
-| --- | --- |
-| **Overview** | Net position, sales vs purchases vs expenses, head count, recent activity. Every approved member. |
-| **Livestock** | Purchases and sales. Editing needs the *livestock* right. |
-| **Expenses** | Feed, veterinary, labour, transport, shed repairs, utilities. Editing needs the *expenses* right. |
-| **Admin** | Admins only. **Pending requests** tab to approve or reject, **Members** tab to grant and revoke edit rights. |
+Rebuilt from scratch in Flutter, starting 2026-08-29. Progress and phase status live in [PLAN.md](PLAN.md)
+and [TASKS.md](TASKS.md); the architecture is in [CLAUDE.md](CLAUDE.md). An earlier Kotlin/Compose client lives in git
+history before the clean-slate commit.
+
+## Specification
+
+[REQUIREMENTS.md](REQUIREMENTS.md) is the specification of record — a 125-section document covering the
+architecture, schemas, sync engine, screens, permission model and acceptance scenarios.
+
+[CLAUDE.md](CLAUDE.md) holds the eight design constraints that **correct or extend** the spec, and the rules
+that lose data if broken. Read it before changing anything under `lib/data/`.
+
+## Architecture
+
+```
+UI  ──►  Riverpod (StreamProvider over a drift .watch())
+             ▲ reads only, never the network
+Controller ──►  Repository  ──►  one drift transaction { upsert row; enqueue operation }
+                                        │
+                                        ▼
+                            drift/SQLite  +  sync_operations outbox
+                                        │
+                            SyncEngine  ──►  SyncRemote (the seam)
+                                                  │
+                          Apps Script gateway (business data)  +  Google Drive (receipt files)
+```
+
+The local database is the only thing the UI reads. Business metadata syncs through a thin Apps Script Web App
+in front of a Google Sheet; receipt images go straight to Google Drive. Total infrastructure cost: ₹0.
 
 ## Requirements
 
-- Android Studio (recent stable), or a JDK 17+ on `JAVA_HOME`
-- Android SDK with the **API 37** platform
-- A Supabase project (optional — see demo mode below)
+- Flutter (stable channel) with the Android toolchain — `flutter doctor` must be clean for Android
+- An Android device or emulator. **Do not launch an emulator with `-gpu swiftshader_indirect`.**
 
-## Run it without a backend
-
-Clone and run. With no Supabase credentials configured the app starts on an
-in-memory demo backend, and the sign-in screen offers three buttons — admin,
-approved member, and a brand-new account — so you can walk the whole
-request → approve → grant-permissions flow immediately. Nothing is persisted.
+## Running it
 
 ```bash
-./gradlew installDebug
+flutter pub get
+cp config/dev.example.json config/dev.json     # fill in the two values; see config/README.md
+flutter run --dart-define-from-file=config/dev.json
 ```
 
-## Connect it to Supabase
-
-1. **Create the schema.** Run
-   [supabase/migrations/0001_init.sql](supabase/migrations/0001_init.sql) in your
-   project's SQL Editor. It creates the profile/approval tables, the two ledgers,
-   the audit triggers, and the row-level security policies that enforce
-   permissions server-side.
-
-2. **Enable Google auth.** Supabase dashboard → Authentication → Providers →
-   Google. Paste your Google Cloud OAuth **web** client id and secret.
-
-3. **Fill in `local.properties`** (not committed):
-
-   ```properties
-   sdk.dir=C\:/Users/<you>/AppData/Local/Android/Sdk
-   supabase.url=https://<project-ref>.supabase.co
-   supabase.anonKey=<anon public key>
-   google.webClientId=<web client id>.apps.googleusercontent.com
-   ```
-
-   Escape the drive colon and use forward slashes — Java `.properties` rules, and
-   lint will fail the build otherwise.
-
-4. **Sign in.** The first account to sign in becomes the approved admin;
-   everyone after that lands in the pending queue. To put someone else in charge,
-   use the `update public.profiles ...` snippet at the end of the migration.
-
-The `google.webClientId` must be the **Web application** client id (the one
-Supabase has), not the Android one. You still need an Android OAuth client
-registered with your package name and signing SHA-1 for on-device sign-in.
-
-## Build and test
+## Commands
 
 ```bash
-./gradlew assembleDebug                # debug APK
-./gradlew assembleRelease              # minified, unsigned release APK
-./gradlew testDebugUnitTest            # JVM unit tests
-./gradlew connectedDebugAndroidTest    # instrumented tests (needs a device)
-./gradlew lintDebug                    # Android Lint
+flutter analyze                    # strict-casts, strict-inference, strict-raw-types
+flutter test                       # unit + widget + golden
+flutter test integration_test/     # needs a device or emulator
+flutter build apk --release        # signed
+node --test gateway/test/          # the Apps Script gateway suite
 ```
+
+`flutter analyze && flutter test` must pass before a change is done. Compiling is not evidence — the storage
+and sync layers only fail at runtime, so anything under `lib/data/` needs the integration tests on a real
+device.
 
 ## Notes
 
-- Money is stored as integer paise so the books stay exact; conversion lives in
-  `util/Money.kt`.
-- Permissions are enforced by Postgres row-level security. The UI hides what you
-  cannot do, but the database is what actually refuses it.
-
-Single Gradle module, `:app`. Dependency versions are centralised in
-[gradle/libs.versions.toml](gradle/libs.versions.toml). See
-[CLAUDE.md](CLAUDE.md) for the access model, architecture and conventions.
+- **Money is stored as integer paise, quantities as integer thousandths.** Never a `double` — stock balances
+  are derived on every read, so float error would compound silently.
+- **Deletes are soft** so removals propagate to other devices. Admins can view and restore deleted records
+  within the retention window.
+- **A receipt captured offline has no Drive file id, and that is valid.** Its local UUID is its permanent
+  identity; the Drive id is only a remote reference.

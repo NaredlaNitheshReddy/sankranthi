@@ -1,0 +1,4 @@
+{
+  "GATEWAY_URL": "https://script.google.com/macros/s/<deployment-id>/exec",
+  "GOOGLE_WEB_CLIENT_ID": "<client-id>.apps.googleusercontent.com"
+}
