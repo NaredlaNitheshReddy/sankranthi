@@ -162,8 +162,10 @@ library.
   *derived on every read*, so float error compounds silently and two devices end up disagreeing on a
   balance. `parseToMinor` refuses negatives and sub-paise rather than rounding.
 - **Dates are ISO `yyyy-MM-dd` strings end to end.** No timezone ambiguity, and it matches the sheet.
-- **Stock balance and herd on-hand are drift `View`s over `SUM`, never stored columns.** A stored balance is
-  a second source of truth that sync can desynchronise.
+- **Stock balance and herd on-hand are drift `View`s over `SUM`, never stored columns — this deliberately
+  drops §32's `StockItem.currentQuantity`.** A stored balance is a second source of truth that sync can
+  desynchronise, leaving you two numbers and no rule for which is right. §43's own "prefer transaction
+  history rather than blindly overwriting stock quantities" is the same instruction. Do not restore it.
 - **Livestock counts are signed delta events with a reason, not §33's `{previousCount, newCount}`.** Two
   devices offline both incrementing must *sum*; absolute snapshots overwrite and one device's count is lost.
 - **Do not put a UNIQUE constraint on `(categoryId, countedOn)`** even though one count per day looks
