@@ -48,12 +48,13 @@ Legend: `[ ]` open · `[x]` done · `[~]` blocked or partial · **§n** = a REQU
 
 ### Enums and conversion
 
-- [ ] `WireEnum` contract: every enum carries an explicit `wire` string and a `fromWire`
-- [ ] `WireEnumConverter<T>` — the only enum-to-column mapping in the system. Never `textEnum`
-- [ ] Enums: `SyncStatus`, `TradeKind`, `ExpenseCategory`, `StockTxnType`, `StockUnit`, `CountReason`,
+- [x] `WireEnum` contract: every enum carries an explicit `wire` string and a `fromWire`
+- [x] `WireEnumConverter<T>` — strict or explicit-fallback, no default constructor; plus the canonical
+      converter instances so each enum's unknown-value decision is made once and asserted
+- [x] Enums: `SyncStatus`, `TradeKind`, `ExpenseCategory`, `StockTxnType`, `StockUnit`, `CountReason`,
       `UploadStatus`, `Permission`, `AccessStatus`, `AuditAction`, `OpType`, `OpStatus`
-- [ ] Test: every enum's wire values are unique, lowercase with underscores, and round-trip
-- [ ] Test: an unknown wire string is handled deliberately, never silently defaulting to a *valid* state
+- [x] Test: every enum's wire values are unique, lowercase with underscores, and round-trip
+- [x] Test: an unknown wire string is handled deliberately, never silently defaulting to a *valid* state
 
 ### Shared columns
 

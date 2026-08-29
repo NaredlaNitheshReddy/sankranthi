@@ -85,8 +85,10 @@ discover and are not re-derivable from the spec, so they live here.
   untouched, or the upload conflicts with itself.
 - **There is no per-row `dirty` flag.** Dirtiness *is* `syncStatus != synced`. Do not add one.
 - **Deletes are soft** (`deleted = true`) so removals propagate, and are routed through the same
-  dirty-marking path as an edit — there is deliberately no separate DELETE operation to order against an
-  UPDATE.
+  dirty-marking path as an edit. There is never *both* an UPDATE and a DELETE operation queued for one row:
+  the single coalesced operation's **type** changes instead, so there is no ordering question to get wrong.
+  `OpType.delete` and `OpType.restore` do exist as types, because §90 and §115 gate them on their own
+  permissions and the server has to know which it is being asked for.
 - **Outbox operations are coalesced per entity.** One operation means "this row is dirty"; the uploader
   reads current state at send time. Enqueuing one per edit would give them all the same stale `baseVersion`.
 - **A pending local edit is never overwritten by a download.** If an incoming row targets a row that is not
