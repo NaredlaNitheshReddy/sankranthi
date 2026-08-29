@@ -41,10 +41,10 @@ Legend: `[ ]` open · `[x]` done · `[~]` blocked or partial · **§n** = a REQU
 
 ### Value types (everything else depends on these)
 
-- [ ] `Money` — `int` paise; `parseToMinor` refuses negatives and sub-paise rather than rounding; format
-      with `en_IN` grouping; tests
-- [ ] `Quantity` — `int` quantityMilli (thousandths); exact round-trip; per-unit display precision; tests
-- [ ] `Dates` — ISO `yyyy-MM-dd` end to end; parse, format, today; tests
+- [x] `Money` — `int` paise; `parseToMinor` refuses negatives and sub-paise rather than rounding; format
+      with hand-rolled Indian (2,2,3) grouping; 26 tests
+- [x] `Quantity` — `int` quantityMilli (thousandths); exact round-trip; truncates rather than rounds; 21 tests
+- [x] `Dates` — ISO `yyyy-MM-dd` end to end; strict parsing; UTC-midnight epoch round-trip; 20 tests
 
 ### Enums and conversion
 
