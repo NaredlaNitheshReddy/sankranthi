@@ -151,10 +151,15 @@ library.
 
 ## Gotchas worth knowing before you edit
 
-- **Apps Script answers POST with a 302** to `script.googleusercontent.com`, and `package:http` correctly
-  downgrades POST→GET on 302/303 per the HTTP spec. Your body vanishes and you get the `doGet` response —
-  **which looks like success.** Use `dio` with `followRedirects: false` and re-issue the POST manually to
-  the `Location` header, bounded to 3 hops. This is the most expensive silent bug in the project.
+- **Apps Script answers POST with a 302** to `script.googleusercontent.com`, and nothing reaches `doPost`
+  unless the POST is re-issued to that `Location`. Use `redirectSafePost`
+  ([lib/data/remote/redirect_safe_post.dart](lib/data/remote/redirect_safe_post.dart)), not a bare
+  `dio.post`. **Measured on this platform** (`redirect_safe_post_test.dart` pins it): `dart:io` only
+  auto-follows GET/HEAD, so a POST 302 comes straight back even with `followRedirects = true` — dio throws
+  and `package:http` hands you an empty body. It fails *loudly* here, which is the good case. The silent
+  variant — where the redirect is followed as a GET and `doGet`'s reply arrives as a cheerful HTTP 200 with
+  your payload gone — is what browsers, `curl -L`, Python `requests` and JS `fetch` do. So don't port a
+  recipe from those and assume it maps, and note that adding a Flutter web target would make it live.
 - **Never use drift's `textEnum<T>()`.** It persists the Dart identifier (`shedRepair`) while the sheet
   expects `shed_repair` — two representations, silent mismatch, rows that never match a query. Every enum
   declares an explicit `wire` string and goes through `WireEnumConverter<T>`.
