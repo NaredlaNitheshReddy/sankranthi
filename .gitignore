@@ -1,37 +1,51 @@
-# Gradle files
-.gradle/
+# --- Dart / Flutter ---
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
 build/
-
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Log/OS Files
-*.log
-
-# Android Studio generated files and folders
-captures/
-.externalNativeBuild/
-.cxx/
-*.aab
-*.apk
-output-metadata.json
-
-# IntelliJ
 *.iml
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec_overrides.yaml
+doc/api/
+
+# --- Config / secrets (constraint #6, REQUIREMENTS §60) ---
+# Real config is injected with --dart-define-from-file and never committed.
+config/*.json
+!config/*.example.json
+
+# --- Android ---
+android/.gradle/
+android/.kotlin/
+android/captures/
+android/local.properties
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+*.apk
+*.aab
+*.apks
+
+# --- iOS (no iOS target; these are generated anyway) ---
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/ephemeral/
+
+# --- Tests ---
+coverage/
+# Golden mismatch output, not source
+test/**/failures/
+
+# --- IDE ---
 .idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
+.vscode/
+*.swp
+*~
 
-# Keystore files
-*.jks
-*.keystore
-
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
-# Android Profiling
-*.hprof
-
-# Android Studio run configurations
-.run/
+# --- OS ---
+.DS_Store
+Thumbs.db
+ehthumbs.db
