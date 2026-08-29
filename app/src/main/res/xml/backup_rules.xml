@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Backup rules for Android 11 and lower.
-     https://developer.android.com/guide/topics/data/autobackup -->
-<full-backup-content />
+     https://developer.android.com/guide/topics/data/autobackup
+
+     The encrypted credential is excluded on purpose. Its Keystore key is
+     per-device and cannot be backed up, so a restored blob would be undecryptable
+     anyway - and sending a bearer token to the backup service is worth avoiding
+     regardless. The app re-authenticates after a restore instead. -->
+<full-backup-content>
+    <exclude domain="file" path="datastore/sankranthi_credentials.preferences_pb" />
+</full-backup-content>

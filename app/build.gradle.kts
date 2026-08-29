@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 // Supabase credentials are read from local.properties (not committed). When they
@@ -16,11 +17,11 @@ val localProps = Properties().apply {
 fun secret(key: String): String = (localProps.getProperty(key) ?: "").trim()
 
 android {
-    namespace = "com.example.sankranthi"
+    namespace = "com.sankranthi.ledger"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.sankranthi"
+        applicationId = "com.sankranthi.ledger"
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -70,6 +71,12 @@ android {
     }
 }
 
+// Room writes exported schemas here; the migration tests read them back.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.generateKotlin", "true")
+}
+
 dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
@@ -86,6 +93,12 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
+
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    implementation(libs.androidx.datastore.preferences)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
@@ -104,6 +117,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.room.testing)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

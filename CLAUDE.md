@@ -45,12 +45,51 @@ decide every read and write. The Compose screens hide buttons the user cannot
 use, but that is courtesy — never the security boundary. When you add a feature
 that writes data, add the RLS policy too.
 
-## Backend: Supabase, with a demo fallback
+## Architecture: offline-first
+
+**The UI reads Room and only Room.** Writes go to the local database and enqueue an
+outbox operation in one transaction, then return — nothing waits for the network.
+Reads are Room `Flow`s, so a write updates the screen because the *database*
+changed, not because a callback fired. See
+[docs/ARCHITECTURE_REVIEW.md](docs/ARCHITECTURE_REVIEW.md) for the full design and
+the reasoning behind the backend choice.
+
+Rules that are load-bearing, not stylistic:
+
+- **Never read from the network in a ViewModel or composable.** The only path to a
+  backend is `sync/` → `RemoteDataSource`.
+- **Row + outbox operation commit together.** A row without its operation is a
+  record that never reaches the other partners; an operation without its row is an
+  upload of something the app cannot show. Both lose data.
+- **`version`, `serverSeq` and `serverUpdatedAt` are server-owned.** A local edit
+  must carry them forward untouched, or the upload will conflict with itself.
+- **Deletes are soft** (`deleted = 1`) so removals propagate, and are routed
+  through the same dirty-marking path as an edit — there is deliberately no
+  separate delete operation to order against an update.
+- **Outbox operations are coalesced per entity.** One operation means "this row is
+  dirty"; the uploader reads current state at send time. Enqueuing one per edit
+  would give them all the same stale `baseVersion`.
+- **`opId` is generated once and reused across retries.** That reuse is the entire
+  duplicate-prevention mechanism.
+
+### Chosen backend: Google Sheets behind an Apps Script gateway
+
+Decided 2026-08-29. The app will **never** call the Sheets or Drive APIs directly —
+the `spreadsheets` scope is *sensitive*, which forces the OAuth consent screen to
+stay in Testing status, where Google expires refresh tokens every 7 days. A thin
+Apps Script Web App fronts the spreadsheet instead, so the app needs only
+`openid email profile` and `LockService` provides the mutual exclusion that makes
+idempotent upsert-by-UUID actually safe. Do not add a Google API client library.
+
+`data/remote/RemoteDataSource.kt` is the seam. **Nothing in `ui/` or `domain/` may
+import an implementation of it.**
+
+## Authentication: Supabase, with a demo fallback
 
 Supabase Auth (Google ID token) plus Postgres via PostgREST.
 
 **If `local.properties` has no Supabase credentials, the app runs on an
-in-memory demo backend** ([DemoBackend.kt](app/src/main/java/com/example/sankranthi/data/repo/demo/DemoBackend.kt))
+in-memory demo backend** ([DemoBackend.kt](app/src/main/java/com/sankranthi/ledger/data/repo/demo/DemoBackend.kt))
 instead of failing to launch. It implements the same repository interfaces and the
 same approval rules, seeded with an admin, an approved member and one pending
 request. The sign-in screen then offers role buttons instead of Google. This is
@@ -59,6 +98,11 @@ you change a repository interface.
 
 `ServiceLocator` picks the implementation from `AppConfig.hasSupabase`. It is a
 plain object, not Hilt; it is the single seam to replace if DI becomes worthwhile.
+
+Note the asymmetry: **only authentication varies by backend.** The ledger is
+always Room-backed, whatever is configured. Supabase is still the live auth path
+and will be re-pointed at the gateway in Phase 3; the Postgres schema in
+`supabase/migrations/` is retained as the §28 migration target.
 
 ## Setup
 
@@ -107,7 +151,9 @@ your package name and signing SHA-1 for Credential Manager to work on-device.
 | minSdk | 24, with core library desugaring for `java.time` |
 | Java / JVM target | 17 |
 | UI | Jetpack Compose + Material 3, `navigation-compose` |
-| Backend | `supabase-kt` 3.8.0 (auth + postgrest), Ktor OkHttp engine |
+| Local store | Room 2.8.4 via KSP 2.3.11 (see gotcha below) |
+| Shared backend | Google Sheets + Drive behind an Apps Script gateway (Phase 4) |
+| Auth (current) | `supabase-kt` 3.8.0, to be re-pointed at the gateway in Phase 3 |
 | Sign-in | `androidx.credentials` + `googleid` → Supabase `IDToken` provider |
 | Serialization | `kotlinx.serialization` |
 
@@ -116,17 +162,24 @@ your package name and signing SHA-1 for Credential Manager to work on-device.
 ```
 supabase/migrations/0001_init.sql   schema, triggers, RLS — the real rulebook
 gradle/libs.versions.toml           version catalog; ALL dependency versions
-app/src/main/java/com/example/sankranthi/
+app/src/main/java/com/sankranthi/ledger/
   MainActivity.kt                   inits ServiceLocator, hosts SankranthiApp
   data/
     AppConfig.kt                    BuildConfig-backed settings
-    ServiceLocator.kt               picks Supabase vs demo, builds the client
+    ServiceLocator.kt               builds Room + picks the auth backend
     GoogleSignInClient.kt           Credential Manager -> Google ID token + nonce
     model/Access.kt                 Role, AccessStatus, Permission, Profile
-    model/Ledger.kt                 TradeKind, LivestockEntry, Expense, LedgerSummary
-    repo/Repositories.kt            SessionState + the three interfaces
-    repo/supabase/                  live implementations
-    repo/demo/                      in-memory implementations
+    model/Ledger.kt                 domain models — no serialisation annotations
+    local/AppDatabase.kt            Room database (v1); schemas/ is committed
+    local/Converters.kt             every stored enum needs one here
+    local/entity/                   storage shapes + SyncMeta + the outbox
+    local/dao/                      Flow-returning DAOs
+    local/Mappers.kt                entity <-> domain
+    repository/LedgerRepository.kt  offline-first writes: Room + outbox, atomically
+    remote/RemoteDataSource.kt      THE SEAM — interface only, no impl yet
+    repo/Repositories.kt            auth + members interfaces
+    repo/supabase/                  auth + members implementations
+    repo/demo/                      in-memory auth + members
   ui/
     nav/SankranthiApp.kt            session gate + bottom nav + NavHost
     auth/                           SessionViewModel, SignInScreen, PendingApprovalScreen
@@ -134,7 +187,8 @@ app/src/main/java/com/example/sankranthi/
     livestock/                      list + editor dialog
     expenses/                       list + editor dialog
     admin/                          AdminViewModel, AdminScreen (Pending / Members tabs)
-    ledger/LedgerViewModel.kt       shared by dashboard, livestock, expenses
+    ledger/LedgerViewModel.kt       Room Flows; no load(), nothing to refresh
+    sync/SyncIndicator.kt           the §19 status chip
     common/Components.kt            SummaryTile, DateField, PickerField, ErrorBanner…
     theme/                          SankranthiTheme
   util/Money.kt, util/Dates.kt
@@ -173,6 +227,17 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"   # PowerShell
   `org.jetbrains.kotlin.android` plugin — AGP 9 fails the build if it is applied.
   The Compose compiler and `kotlinx.serialization` plugins *are* still applied
   normally.
+- **Every enum stored by a Room entity needs a converter in `Converters.kt`.**
+  Without one Room silently stores the enum by `name` (`PENDING`) while queries
+  written against `wire` look for `pending`; they never match, and reading the row
+  back throws `Can't convert value to enum`. DAO parameters are typed as the enum,
+  not `String`, so there is only one representation to get wrong.
+- **KSP must be ≥ 2.3.1 for AGP 9 built-in Kotlin** (pinned at 2.3.11). `kapt` is
+  incompatible with AGP 9 entirely. Do not put `@Parcelize` on a Room entity —
+  KSP still fails to resolve that combination under built-in Kotlin.
+- **Room's exported schemas in `app/schemas/` are committed** and are inputs to
+  migration tests. `fallbackToDestructiveMigration` is deliberately absent: losing
+  a partner's unsynced records on an app update would violate §20.
 - **Money is stored as `Long` paise**, never a `Double`. All conversion goes
   through `util/Money.kt`; `parseToMinor` refuses negatives and sub-paise
   precision rather than rounding silently. Postgres columns are `bigint`.
@@ -215,9 +280,23 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"   # PowerShell
 ./gradlew assembleDebug testDebugUnitTest lintDebug
 ```
 
-must pass; add `compileDebugAndroidTestKotlin` when you touch `src/androidTest`,
-and `assembleRelease` when you change dependencies or ProGuard rules. Lint is
-configured to fail on errors — do not skip it.
+must pass; add `assembleRelease` when you change dependencies or ProGuard rules.
+Lint is configured to fail on errors — do not skip it.
+
+**Compiling the instrumented tests is not evidence.** `./gradlew
+connectedDebugAndroidTest` (or `adb shell am instrument`) on a real device or
+emulator is, and it is required for any change under `data/local/`,
+`data/repository/` or `sync/` — the storage layer's real failures only appear at
+runtime. Two traps that cost real time here:
+
+- **Do not launch the emulator with `-gpu swiftshader_indirect`.** Compose
+  surfaces fail to initialise, the host activity is destroyed immediately, and
+  every UI test fails with "No compose hierarchies found" — which looks exactly
+  like a code bug and is not one.
+- **Assert against merged-tree-invisible nodes with `useUnmergedTree = true`.**
+  `ExtendedFloatingActionButton` merges its descendants and exposes no `Text`, so
+  a plain `onNodeWithText(...).assertDoesNotExist()` on a FAB label passes whether
+  or not the button is there — a silent false pass on a permission gate.
 
 Gradle's configuration cache is on. If a build fails oddly right after you move
 or rename resource files, incremental state is the likely cause — rerun with
@@ -225,7 +304,7 @@ or rename resource files, incremental state is the likely cause — rerun with
 
 ## Package name
 
-Everything is under `com.example.sankranthi` (`namespace` and `applicationId` in
+Everything is under `com.sankranthi.ledger` (`namespace` and `applicationId` in
 [app/build.gradle.kts](app/build.gradle.kts)). Renaming means updating both,
 the `src/*/java` directory paths, every `package`/`import`, and the Android OAuth
 client registered with Google.
